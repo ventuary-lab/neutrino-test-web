@@ -6,7 +6,7 @@ import axios from 'axios'
 import { LineChart, Line, CartesianGrid, XAxis, YAxis,Tooltip , Legend } from 'recharts';
 
 class App extends Component {
-  nodeUrl = "https://testnode1.wavesnodes.com"
+  nodeUrl =  "https://testnode1.wavesnodes.com"
   wvs = 100000000
   chainId = 'T'
   constructor(props) {
@@ -49,9 +49,9 @@ class App extends Component {
     let supplyNUSDB = 1000000000
     let address = new seedUtils.Seed(this.state.seed, this.chainId).address
 
-    let reserve = await nodeInteraction.balance(this.state.neutrinoAddress, this.nodeUrl)
-    let supply = supplyNUSD - await nodeInteraction.assetBalance(this.state.dataNeutrino.neutrino_asset_id, this.state.neutrinoAddress, this.nodeUrl)/this.wvs
-    let deficit = (supply - reserve/this.wvs * this.state.dataNeutrino.price/100)
+    let reserve = this.state.dataNeutrino.waves_reserve/this.wvs
+    let supply = this.state.dataNeutrino.neutrino_supply/this.wvs
+    let deficit = (supply - reserve * this.state.dataNeutrino.price/100)
     let other = {
         address : address,
         balance : await nodeInteraction.balance(address, this.nodeUrl),
@@ -165,12 +165,15 @@ class App extends Component {
     let orederbook = []
     orders.forEach(element => {
       if (element != "") {
-        let amount = this.state.dataAuction["order_amount_" + element] / this.wvs;
+        let filledTotal = this.state.dataAuction["order_filled_total_" + element]
+        if(this.state.dataAuction["order_filled_total_" + element] === undefined)
+          filledTotal = 0
+        let total = (this.state.dataAuction["order_total_" + element] - filledTotal)/ this.wvs ;
         let price = this.state.dataAuction["order_price_" + element] / 100;
-        let order = <div>{amount} | {price} | {amount * price}</div>
+        let order = <div>{Math.round(total / price * this.wvs)/this.wvs}  | {price} | {total}</div>
         if (this.state.dataAuction["order_owner_" + element] == this.state.dataOther.address)
           order = <div>
-                        {Math.round(amount / price * this.wvs)/this.wvs}  | {price} | {amount}
+                        {Math.round(total / price * this.wvs)/this.wvs}  | {price} | {total}
                     <button type="submit" onClick={this.cancelOrder.bind(this, element)}>X</button>
                   </div>
         orederbook.push(order)
@@ -186,7 +189,7 @@ class App extends Component {
     let orederbook = []
     orders.forEach(element => {
       if (element != "") {
-        let amount = this.state.dataNeutrino["order_amount_" + element];
+        let amount = this.state.dataNeutrino["order_total_" + element];
         let order = <div>{amount}</div>
         if (this.state.dataNeutrino["order_owner_" + element] == this.state.dataOther.address)
           order = <div>
@@ -225,7 +228,7 @@ class App extends Component {
     let orederbook = []
     orders.forEach(element => {
       if (element != "") {
-        let amount = this.state.dataNeutrino["order_amount_" + element];
+        let amount = this.state.dataNeutrino["order_total_" + element];
         let order = <div>{amount}</div>
         if (this.state.dataNeutrino["order_owner_" + element] == this.state.dataOther.address)
           order = <div>
@@ -275,7 +278,7 @@ class App extends Component {
     const tx = invokeScript({
       chainId: this.chainId,
       dApp: this.state.neutrinoAddress,
-      call: {function: "withdraw" }
+      call: {function: "withdraw", args:[{type:"string", value: this.state.dataOther.address }] }
     }, this.state.seed);
     await this.sendTx(tx)
   }
@@ -439,6 +442,10 @@ class App extends Component {
             <h3>Vars</h3>
             Currency price: 1 waves = {this.state.dataNeutrino.price/100} USD<br/>
             Deficit: {this.state.dataOther.deficit} N-USD<br/> 
+
+            Reserve: {this.state.dataNeutrino.waves_reserve/this.wvs} Waves<br/> 
+            Supply: {this.state.dataNeutrino.neutrino_supply/this.wvs} N-USD<br/> 
+            
             Snapshot block: {this.state.dataNeutrino.surplus_block}<br/> 
             Snapshot surplus: {this.state.dataNeutrino.surplus_amount/this.wvs} <br/> 
             Snapshot balance(current): {this.getActualSnapshot()} <br/> 
@@ -526,6 +533,53 @@ class App extends Component {
             <div>
               <h4>Queue bond execute Snapshot</h4>
               {this.getBondQueueSnapshot()}
+            </div>
+          </div>
+          <div>
+            <h3>Leasing</h3>
+            <div>
+              <h4>addLeasingSettings</h4>
+              <button type="submit" onClick={this.createSnapshotBalance}>Create</button>
+            </div>
+            <div>
+              <h4>removeLeasingSettings</h4>
+              <button type="submit" onClick={this.createSnapshotBalance}>Create</button>
+            </div>
+            <div>
+              <h4>snapshotLeasingSettings</h4>
+              <button type="submit" onClick={this.createSnapshotBalance}>Create</button>
+            </div>
+            <div>
+              <h4>snapshotBalance</h4>
+              <button type="submit" onClick={this.createSnapshotBalance}>Create</button>
+            </div>
+            <div>
+              <h4>finilizeSnapshots</h4>
+              <button type="submit" onClick={this.createSnapshotBalance}>Create</button>
+            </div>
+            <div>
+              <h4>applySettings</h4>
+              <button type="submit" onClick={this.createSnapshotBalance}>Create</button>
+            </div>
+            <div>
+              <h4>sendToLeasing</h4>
+              <button type="submit" onClick={this.createSnapshotBalance}>Create</button>
+            </div>
+            <div>
+              <h4>withdraw</h4>
+              <button type="submit" onClick={this.createSnapshotBalance}>Create</button>
+            </div>
+            <div>
+              <h4>withdrawMyProfit</h4>
+              <button type="submit" onClick={this.createSnapshotBalance}>Create</button>
+            </div>
+            <div>
+              <h4>lease</h4>
+              <button type="submit" onClick={this.createSnapshotBalance}>Create</button>
+            </div>
+            <div>
+              <h4>cancel lease</h4>
+              <button type="submit" onClick={this.createSnapshotBalance}>Create</button>
             </div>
           </div>
         </div>
