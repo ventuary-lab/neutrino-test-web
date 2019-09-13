@@ -56,8 +56,6 @@ class App extends Component {
     this.setState({ dataNeutrino: this.convertToMap(result) });
     result = await nodeInteraction.accountData(this.state.dataNeutrino.auction_contract, this.nodeUrl)
     this.setState({ dataAuction: this.convertToMap(result) });
-    result = await nodeInteraction.accountData(this.state.dataNeutrino.lease_contract, this.nodeUrl)
-    this.setState({ dataLease: this.convertToMap(result) });
     
     let supplyNUSD = 1000000000.00000000
     let supplyNUSDB = 1000000000
@@ -70,7 +68,6 @@ class App extends Component {
         address : address,
         balance : await nodeInteraction.balance(address, this.nodeUrl),
         bondBalance: await nodeInteraction.assetBalance(this.state.dataNeutrino.bond_asset_id, address, this.nodeUrl),
-        leaseNodeBalance: await nodeInteraction.balance(this.leaseNodeProviderAddress, this.nodeUrl),
         bondAuctionBalance: await nodeInteraction.assetBalance(this.state.dataNeutrino.bond_asset_id, this.state.dataNeutrino.auction_contract, this.nodeUrl),
         nusdBalance: await nodeInteraction.assetBalance(this.state.dataNeutrino.neutrino_asset_id, address, this.nodeUrl),
         deficit: Math.round(deficit)
@@ -682,59 +679,6 @@ class App extends Component {
               <h4>Queue bond execute Snapshot</h4>
               {this.getBondQueueSnapshot()}
             </div>
-          </div>
-          <div>
-            <h3>Leasing</h3>
-            PrevSnapshotBlock: {this.state.dataLease["lease_prev_block_" + this.state.dataLease.lease_block]}
-            <br/>CurrentSnapshotBlock: { this.state.dataLease.lease_block}
-            <div>
-              <h4>Leasing Settings</h4>
-              <label>
-                {this.getLeasingSetting()}
-                <div>
-                  NodeAddress: <input type="text" value={this.state.leasingConfig.nodeAddress} onChange={this.nodeAddressChange} /> {" "}
-                  Percent: <input type="text" value={this.state.leasingConfig.percent} onChange={this.percentChange} /> {" "}
-                </div> 
-              </label>
-              <button type="submit" onClick={this.addLeasingSetting}>Apply</button>
-            </div>
-            <div>
-              <h4>Snapshot leasing settings</h4>
-              {this.getSnapshotLeasingSetting()}
-              <button type="submit" onClick={this.snapshotLeasingSetting}>Create</button>
-            </div>
-             <div>
-              <h4>Snapshot balance</h4>
-              <button type="submit" onClick={this.snapshotLeasingBalance}>Create</button>
-            </div>
-            <div>
-              <h4>Finilize Snapshots</h4>
-              <button type="submit" onClick={this.finilizeSnapshots}>Create</button>
-            </div>
-          </div>
-          <div>
-           <div>
-              <h3>Leasing</h3>
-              Provider Address: {this.leaseNodeProviderAddress}
-              <br />Address: {this.leaseNodeAddress}
-              <br />Node Balance: {this.state.dataLease["node_balance_"+this.leaseNodeProviderAddress+"_"+this.state.dataLease.lease_block]/this.wvs}
-              <br />Current Balance: {this.state.dataOther.leaseNodeBalance/this.wvs}
-              <br/><button type="submit" onClick={this.sendToLeasing}>Send to leasing</button>
-            </div>
-            <div>
-              <button type="submit" onClick={this.leaseTx}>Lease</button>
-            </div>
-            <div>
-              <h4>Withdraw</h4>
-              Block: <input type="text" value={this.state.withdrawLeasingBlock} onChange={()=>this.setState({withdrawLeasingBlock: event.target.value})} /> {" "}
-              <button type="submit" onClick={this.withdrawLeasing}>Withdraw</button>
-              <button type="submit" onClick={this.withdrawProfit}>withdrawProfit</button>
-            <div>
-              <h4>Cancel lease</h4>
-              LeaseId: <input type="text" value={this.state.leaseId} onChange={()=>this.setState({leaseId: event.target.value})} /> {" "}
-              <button type="submit" onClick={this.cancelLeaseTx}>Cancel</button>
-            </div>
-          </div>
           </div>
         </div>
       </div>
