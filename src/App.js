@@ -1,24 +1,28 @@
 import React, { Component } from 'react';
 import logo from './logo.svg';
 import './App.css';
-import {invokeScript, address, nodeInteraction, broadcast, waitForTx, balance, assetBalance, seedUtils} from "@waves/waves-transactions"
+import {invokeScript, address, nodeInteraction, broadcast, waitForTx, balance, assetBalance, seedUtils, lease, cancelLease} from "@waves/waves-transactions"
 import axios from 'axios'
 import { LineChart, Line, CartesianGrid, XAxis, YAxis,Tooltip , Legend } from 'recharts';
 
 class App extends Component {
-  nodeUrl =  "https://testnode1.wavesnodes.com"
+  nodeUrl =  "http://127.0.0.1:6869"
   wvs = 100000000
-  chainId = 'T'
+  chainId = 'R'
+  leasingNodeSeed = "minute sail fortune shuffle gun submit reveal few fever nest chunk slow actor peanut warmnodeProvider|1"
+  leaseNodeProviderAddress = "3MMmugpEJgH414vS8MusoeKq91Vum1sHvg6"
+  leaseNodeAddress = "3ME4Lp8uoqKGBY6NG7TSQYTtVJrNmRJ43cp"
   constructor(props) {
     super(props)
     this.state = {
       dataNeutrino: {},
-      neutrinoAddress: "3MrtHeXquGPcRd3YjJQHfY1Ss6oSDpfxGuL",
-      seed: "",
-      dataAuction: "",
+      neutrinoAddress: "3MM4AETJutZVMZjjYUNg1MjbvQqQ7MCFjv8",
+      seed: "minute sail fortune shuffle gun submit reveal few fever nest chunk slow actor peanut warm1",
+      dataAuction: {},
+      dataLease: {},
       swapWavesAmount: 1,
       swapNutrinoAmount: 1,
-      price: 0.1,
+      price: 0.0,
       lastTxHash: "",
       dataOther: "",
       orderPrice: 0,
@@ -27,10 +31,18 @@ class App extends Component {
       bondOrderAmount: 0,
       orderWallBuy: true,
       orderWallStep: 0,
-      initOrderWallPrice: 0
+      initOrderWallPrice: 0,
+      leasingSttings: [],
+      leasingConfig: { nodeAddress: "", percent: 0 },
+      withdrawLeasingBlock: 0,
+      leaseId: ""
     }
     this.updateData()
     setInterval(() => this.updateData(), 600);
+  }
+
+  getRandomArbitrary(min, max) {
+    return Math.random() * (max - min) + min;
   }
   convertToMap(array){
     let newMap = {}
@@ -44,7 +56,9 @@ class App extends Component {
     this.setState({ dataNeutrino: this.convertToMap(result) });
     result = await nodeInteraction.accountData(this.state.dataNeutrino.auction_contract, this.nodeUrl)
     this.setState({ dataAuction: this.convertToMap(result) });
-
+    result = await nodeInteraction.accountData(this.state.dataNeutrino.lease_contract, this.nodeUrl)
+    this.setState({ dataLease: this.convertToMap(result) });
+    
     let supplyNUSD = 1000000000.00000000
     let supplyNUSDB = 1000000000
     let address = new seedUtils.Seed(this.state.seed, this.chainId).address
@@ -56,9 +70,10 @@ class App extends Component {
         address : address,
         balance : await nodeInteraction.balance(address, this.nodeUrl),
         bondBalance: await nodeInteraction.assetBalance(this.state.dataNeutrino.bond_asset_id, address, this.nodeUrl),
+        leaseNodeBalance: await nodeInteraction.balance(this.leaseNodeProviderAddress, this.nodeUrl),
         bondAuctionBalance: await nodeInteraction.assetBalance(this.state.dataNeutrino.bond_asset_id, this.state.dataNeutrino.auction_contract, this.nodeUrl),
         nusdBalance: await nodeInteraction.assetBalance(this.state.dataNeutrino.neutrino_asset_id, address, this.nodeUrl),
-        deficit: Math.round(deficit * this.wvs)/this.wvs
+        deficit: Math.round(deficit)
     }
     this.setState({ dataOther: other });
 
@@ -80,12 +95,11 @@ class App extends Component {
 
     this.setState({ chart: chart });
   }
-
-
   async sendTx(tx){
     try{
       await broadcast(tx, this.nodeUrl);
       this.setState({lastTxHash: tx.id})
+      alert(tx.id)
     }catch(e){
       alert(e.name + ":" + e.message + "\n" + e.stack);
       console.log(e)
@@ -101,7 +115,6 @@ class App extends Component {
     }, this.state.seed);
     await this.sendTx(setPriceTx)
   }
-
   swapWavesToNeutrino = async () => {
     const tx = invokeScript({
             chainId: this.chainId,
@@ -111,7 +124,6 @@ class App extends Component {
         }, this.state.seed);
     await this.sendTx(tx)
   }
-  
   swapNeutrinoToWaves = async () => {
     const tx = invokeScript({
       chainId: this.chainId,
@@ -121,7 +133,6 @@ class App extends Component {
     }, this.state.seed);
     await this.sendTx(tx)
   }
-  
   generateBond = async () => {
     const tx = invokeScript({
       chainId: this.chainId,
@@ -139,7 +150,6 @@ class App extends Component {
     }, this.state.seed);
     await this.sendTx(tx)
   }
-
   async cancelOrder(hash){
     const tx = invokeScript({
       chainId: this.chainId,
@@ -148,7 +158,6 @@ class App extends Component {
     }, this.state.seed);
     await this.sendTx(tx)
   }
-  
   executeFirstOrder = async () => {
     const tx = invokeScript({
       chainId: this.chainId,
@@ -157,7 +166,6 @@ class App extends Component {
     }, this.state.seed);
     this.sendTx(tx)
   }
-  
   getOrderbook() {
     if (this.state.dataAuction.orderbook == undefined)
       return [];
@@ -181,7 +189,6 @@ class App extends Component {
     });
     return orederbook;
   }
-
   getBondQueue() {
     if (this.state.dataNeutrino.orderbook == undefined)
       return [];
@@ -201,7 +208,6 @@ class App extends Component {
     });
     return orederbook;
   }
-
   addBondQueue = async () => {
     const tx = invokeScript({
       chainId: this.chainId,
@@ -211,7 +217,6 @@ class App extends Component {
     }, this.state.seed);
     await this.sendTx(tx)
   }
-  
   async removeBondQueue(hash){
     const tx = invokeScript({
       chainId: this.chainId,
@@ -220,7 +225,6 @@ class App extends Component {
     }, this.state.seed);
     await this.sendTx(tx)
   }
-
   getBondQueueSnapshot() {
     if (this.state.dataNeutrino.orderbook_snapshot == undefined)
       return [];
@@ -264,7 +268,6 @@ class App extends Component {
     }, this.state.seed);
     await this.sendTx(tx)
   }
-
   async getNewNeutrino(hash){
     const tx = invokeScript({
       chainId: this.chainId,
@@ -273,7 +276,6 @@ class App extends Component {
     }, this.state.seed);
     await this.sendTx(tx)
   }
-
   withdraw = async () => {
     const tx = invokeScript({
       chainId: this.chainId,
@@ -282,7 +284,6 @@ class App extends Component {
     }, this.state.seed);
     await this.sendTx(tx)
   }
-
   getActualSnapshot(){
     let newMap = {}
     let array = this.state.dataNeutrino;
@@ -375,8 +376,157 @@ class App extends Component {
     return snapshot;
   }
 
+  nodeAddressChange = (event) => {
+    let leasingConfig = this.state.leasingConfig
+    leasingConfig.nodeAddress = event.target.value
+    this.setState({ leasingConfig: leasingConfig });
+  }
+  percentChange = (event) => {
+    let leasingConfig = this.state.leasingConfig
+    leasingConfig.percent = event.target.value
+    this.setState({ leasingConfig: leasingConfig })
+  }
+
+  getLeasingSetting(){
+    if(this.state.dataLease["account_nodes_" + this.state.dataOther.address] == undefined)
+      return [];
+    let settins = this.state.dataLease["account_nodes_" + this.state.dataOther.address].split("_")
+    let settingUi = []
+    for (let index = 0; index < settins.length-1; index++) {
+      let values = settins[index].split("+")
+      let item = 
+        <div>
+          NodeAddress: {values[0]} {" "}
+          Percent: {values[1]}% {" "}
+          <button type="submit" onClick={this.removeLesingSetting.bind(this, index)}>X</button>
+        </div> 
+      settingUi.push(item)
+    }
+    return settingUi
+  }
+  getSnapshotLeasingSetting(){
+    let block = this.state.dataLease["lease_prev_block_" + this.state.dataLease.lease_block]
+    let key = "snapshot_account_nodes_" + this.state.dataOther.address + "_" + block
+    if(this.state.dataLease[key] == undefined)
+      return [];
+    let settins = this.state.dataLease[key].split("_")
+    let settingUi = []
+    for (let index = 0; index < settins.length-1; index++) {
+      let values = settins[index].split("+")
+
+      let isExist = this.state.dataLease["n_executed_" + this.state.dataOther.address  + "_" + values[0] + "_" + this.state.dataLease.lease_block]
+      if(isExist)
+        continue;
+      let item = 
+        <div>
+          NodeAddress: {values[0]} {" "}
+          Percent: {values[1]}% {" "}
+          <button type="submit" onClick={this.applyLeasingSettings.bind(this, index)}>+</button>
+        </div> 
+      settingUi.push(item)
+    }
+    return settingUi
+  }
+  async removeLesingSetting(position){
+    const tx = invokeScript({
+      chainId: this.chainId,
+      dApp: this.state.dataNeutrino.lease_contract,
+      call: {function: "removeLeasingSettings", args: [{ value: position, type:"integer" }]}
+    }, this.state.seed);
+    await this.sendTx(tx)
+  }
+
+  addLeasingSetting = async () => {
+    let leasingConfig = this.state.leasingConfig
+    const tx = invokeScript({
+      chainId: this.chainId,
+      dApp: this.state.dataNeutrino.lease_contract,
+      call: {function: "addLeasingSettings", args: [{ value: leasingConfig.nodeAddress, type:"string" }, { value: leasingConfig.percent, type:"integer" }]}
+    }, this.state.seed);
+
+    leasingConfig.percent = 0
+    leasingConfig.nodeAddress = ""
+    this.setState({ leasingConfig: leasingConfig })
+    await this.sendTx(tx)
+  }
+  async applyLeasingSettings(position){
+    let leasingConfig = this.state.leasingConfig
+    const tx = invokeScript({
+      chainId: this.chainId,
+      dApp: this.state.dataNeutrino.lease_contract,
+      call: {function: "applySettings", args: [{ value: this.state.dataOther.address, type:"string" }, { value: position, type:"integer" }]}
+    }, this.state.seed);
+    await this.sendTx(tx)
+  }
+  snapshotLeasingBalance = async () => { 
+    let leasingConfig = this.state.leasingConfig
+    const tx = invokeScript({
+      chainId: this.chainId,
+      dApp: this.state.dataNeutrino.lease_contract,
+      call: {function: "snapshotBalance", args: [{ value: this.state.dataOther.address, type:"string" }]}
+    }, this.state.seed);
+    await this.sendTx(tx)
+  }
+  finilizeSnapshots = async () => { 
+    let leasingConfig = this.state.leasingConfig
+    const tx = invokeScript({
+      chainId: this.chainId,
+      dApp: this.state.dataNeutrino.lease_contract,
+      call: {function: "finilizeSnapshots"}
+    }, this.state.seed);
+    await this.sendTx(tx)
+  }
+  
+  snapshotLeasingSetting = async () => { 
+    const tx = invokeScript({
+      chainId: this.chainId,
+      dApp: this.state.dataNeutrino.lease_contract,
+      call: {function: "snapshotLeasingSettings", args: [{ value: this.state.dataOther.address , type:"string" }]}
+    }, this.state.seed);
+    await this.sendTx(tx)
+  }
+  sendToLeasing = async () => {
+    const tx = invokeScript({
+      chainId: this.chainId,
+      dApp: this.state.neutrinoAddress,
+      call: {function: "sendToLeasing", args: [{ value: this.leaseNodeProviderAddress , type:"string"}, {value: this.state.dataLease.lease_block , type:"integer" }]}
+    }, this.state.seed);
+    await this.sendTx(tx)
+  }
+  leaseTx = async () => {
+    const tx = lease({
+      chainId: this.chainId,
+      amount: this.state.dataLease["node_balance_"+this.leaseNodeProviderAddress+"_"+this.state.dataLease.lease_block],
+      recipient: this.leaseNodeAddress,
+      fee: 500000
+    }, this.leasingNodeSeed);
+    await this.sendTx(tx)
+  }
+  cancelLeaseTx = async () => {
+    const tx = cancelLease({
+      chainId: this.chainId,
+      leaseId: this.state.leaseId,
+      fee: 500000
+    }, this.leasingNodeSeed);
+    await this.sendTx(tx)
+  }
+  withdrawLeasing = async () => {
+     const tx = invokeScript({
+      chainId: this.chainId,
+      dApp: this.leaseNodeProviderAddress,
+      call: {function: "withdraw", args: [{ value: this.state.withdrawLeasingBlock, type:"integer" }]}
+    }, this.state.seed);
+    await this.sendTx(tx)
+  }
+  withdrawProfit = async () => {
+     const tx = invokeScript({
+      chainId: this.chainId,
+      dApp: this.leaseNodeProviderAddress,
+      call: {function: "withdrawProfit", args: [{ value: this.state.dataOther.address , type:"string" }, { value: this.state.withdrawLeasingBlock, type:"integer" }]}
+    }, this.state.seed);
+    await this.sendTx(tx)
+  }
   render() {
-    
     return (
       <div className="App">
         LastTxHash: {this.state.lastTxHash} | {' '}
@@ -437,7 +587,6 @@ class App extends Component {
               <br/><button type="submit" onClick={this.setOrderWall}>Set</button>
             </div>
           </div>
-
           <div>
             <h3>Vars</h3>
             Currency price: 1 waves = {this.state.dataNeutrino.price/100} USD<br/>
@@ -467,8 +616,7 @@ class App extends Component {
               <Line type="monotone" dataKey="price" stroke="#82ca9d" />
             </LineChart>
 
-          </div>
-            
+          </div>        
           <div>
             <h3>Swap</h3>
             Blocked Neutrino: {this.state.dataNeutrino["neutrino_" + this.state.dataOther.address]/this.wvs} <br/>
@@ -537,50 +685,56 @@ class App extends Component {
           </div>
           <div>
             <h3>Leasing</h3>
+            PrevSnapshotBlock: {this.state.dataLease["lease_prev_block_" + this.state.dataLease.lease_block]}
+            <br/>CurrentSnapshotBlock: { this.state.dataLease.lease_block}
             <div>
-              <h4>addLeasingSettings</h4>
-              <button type="submit" onClick={this.createSnapshotBalance}>Create</button>
+              <h4>Leasing Settings</h4>
+              <label>
+                {this.getLeasingSetting()}
+                <div>
+                  NodeAddress: <input type="text" value={this.state.leasingConfig.nodeAddress} onChange={this.nodeAddressChange} /> {" "}
+                  Percent: <input type="text" value={this.state.leasingConfig.percent} onChange={this.percentChange} /> {" "}
+                </div> 
+              </label>
+              <button type="submit" onClick={this.addLeasingSetting}>Apply</button>
             </div>
             <div>
-              <h4>removeLeasingSettings</h4>
-              <button type="submit" onClick={this.createSnapshotBalance}>Create</button>
+              <h4>Snapshot leasing settings</h4>
+              {this.getSnapshotLeasingSetting()}
+              <button type="submit" onClick={this.snapshotLeasingSetting}>Create</button>
+            </div>
+             <div>
+              <h4>Snapshot balance</h4>
+              <button type="submit" onClick={this.snapshotLeasingBalance}>Create</button>
             </div>
             <div>
-              <h4>snapshotLeasingSettings</h4>
-              <button type="submit" onClick={this.createSnapshotBalance}>Create</button>
+              <h4>Finilize Snapshots</h4>
+              <button type="submit" onClick={this.finilizeSnapshots}>Create</button>
+            </div>
+          </div>
+          <div>
+           <div>
+              <h3>Leasing</h3>
+              Provider Address: {this.leaseNodeProviderAddress}
+              <br />Address: {this.leaseNodeAddress}
+              <br />Node Balance: {this.state.dataLease["node_balance_"+this.leaseNodeProviderAddress+"_"+this.state.dataLease.lease_block]/this.wvs}
+              <br />Current Balance: {this.state.dataOther.leaseNodeBalance/this.wvs}
+              <br/><button type="submit" onClick={this.sendToLeasing}>Send to leasing</button>
             </div>
             <div>
-              <h4>snapshotBalance</h4>
-              <button type="submit" onClick={this.createSnapshotBalance}>Create</button>
+              <button type="submit" onClick={this.leaseTx}>Lease</button>
             </div>
             <div>
-              <h4>finilizeSnapshots</h4>
-              <button type="submit" onClick={this.createSnapshotBalance}>Create</button>
-            </div>
+              <h4>Withdraw</h4>
+              Block: <input type="text" value={this.state.withdrawLeasingBlock} onChange={()=>this.setState({withdrawLeasingBlock: event.target.value})} /> {" "}
+              <button type="submit" onClick={this.withdrawLeasing}>Withdraw</button>
+              <button type="submit" onClick={this.withdrawProfit}>withdrawProfit</button>
             <div>
-              <h4>applySettings</h4>
-              <button type="submit" onClick={this.createSnapshotBalance}>Create</button>
+              <h4>Cancel lease</h4>
+              LeaseId: <input type="text" value={this.state.leaseId} onChange={()=>this.setState({leaseId: event.target.value})} /> {" "}
+              <button type="submit" onClick={this.cancelLeaseTx}>Cancel</button>
             </div>
-            <div>
-              <h4>sendToLeasing</h4>
-              <button type="submit" onClick={this.createSnapshotBalance}>Create</button>
-            </div>
-            <div>
-              <h4>withdraw</h4>
-              <button type="submit" onClick={this.createSnapshotBalance}>Create</button>
-            </div>
-            <div>
-              <h4>withdrawMyProfit</h4>
-              <button type="submit" onClick={this.createSnapshotBalance}>Create</button>
-            </div>
-            <div>
-              <h4>lease</h4>
-              <button type="submit" onClick={this.createSnapshotBalance}>Create</button>
-            </div>
-            <div>
-              <h4>cancel lease</h4>
-              <button type="submit" onClick={this.createSnapshotBalance}>Create</button>
-            </div>
+          </div>
           </div>
         </div>
       </div>
