@@ -6,18 +6,18 @@ import axios from 'axios'
 import { LineChart, Line, CartesianGrid, XAxis, YAxis,Tooltip , Legend } from 'recharts';
 
 class App extends Component {
-  nodeUrl =  "http://127.0.0.1:6869"
+  nodeUrl =  "https://testnode1.wavesnodes.com"
   wvs = 100000000
-  chainId = 'R'
-  leasingNodeSeed = "minute sail fortune shuffle gun submit reveal few fever nest chunk slow actor peanut warmnodeProvider|1"
-  leaseNodeProviderAddress = "3MMmugpEJgH414vS8MusoeKq91Vum1sHvg6"
-  leaseNodeAddress = "3ME4Lp8uoqKGBY6NG7TSQYTtVJrNmRJ43cp"
+  chainId = 'T'
+  leasingNodeSeed = ""
+  leaseNodeProviderAddress = ""
+  leaseNodeAddress = ""
   constructor(props) {
     super(props)
     this.state = {
       dataNeutrino: {},
-      neutrinoAddress: "3MM4AETJutZVMZjjYUNg1MjbvQqQ7MCFjv8",
-      seed: "minute sail fortune shuffle gun submit reveal few fever nest chunk slow actor peanut warm1",
+      neutrinoAddress: "3MrtHeXquGPcRd3YjJQHfY1Ss6oSDpfxGuL",
+      seed: "",
       dataAuction: {},
       dataLease: {},
       swapWavesAmount: 1,
