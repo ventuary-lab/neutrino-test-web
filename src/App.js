@@ -9,17 +9,14 @@ class App extends Component {
   nodeUrl =  "https://testnode1.wavesnodes.com"
   wvs = 100000000
   chainId = 'T'
-  leasingNodeSeed = ""
-  leaseNodeProviderAddress = ""
-  leaseNodeAddress = ""
   constructor(props) {
     super(props)
     this.state = {
       dataNeutrino: {},
-      neutrinoAddress: "3MrtHeXquGPcRd3YjJQHfY1Ss6oSDpfxGuL",
+      neutrinoAddress: "3NAXNEjQCDj9ivPGcdjkRhVMBkkvyGRUWKm",
       seed: "",
       dataAuction: {},
-      dataLease: {},
+      dataRPD: {},
       swapWavesAmount: 1,
       swapNutrinoAmount: 1,
       price: 0.0,
@@ -32,10 +29,8 @@ class App extends Component {
       orderWallBuy: true,
       orderWallStep: 0,
       initOrderWallPrice: 0,
-      leasingSttings: [],
-      leasingConfig: { nodeAddress: "", percent: 0 },
-      withdrawLeasingBlock: 0,
-      leaseId: ""
+      adminPrice: 0,
+      rpdNeutrinoAmount: 0
     }
     this.updateData()
     setInterval(() => this.updateData(), 600);
@@ -56,14 +51,17 @@ class App extends Component {
     this.setState({ dataNeutrino: this.convertToMap(result) });
     result = await nodeInteraction.accountData(this.state.dataNeutrino.auction_contract, this.nodeUrl)
     this.setState({ dataAuction: this.convertToMap(result) });
-    
+    result = await nodeInteraction.accountData(this.state.dataNeutrino.rpd_contract, this.nodeUrl)
+    this.setState({ dataRPD: this.convertToMap(result) });
+
     let supplyNUSD = 1000000000.00000000
     let supplyNUSDB = 1000000000
     let address = new seedUtils.Seed(this.state.seed, this.chainId).address
 
-    let reserve = this.state.dataNeutrino.waves_reserve/this.wvs
-    let supply = this.state.dataNeutrino.neutrino_supply/this.wvs
-    let deficit = (supply - reserve * this.state.dataNeutrino.price/100)
+    let reserve = await nodeInteraction.balance(this.state.neutrinoAddress, this.nodeUrl)
+    let supply = supplyNUSD - await nodeInteraction.assetBalance(this.state.dataNeutrino.neutrino_asset_id, this.state.neutrinoAddress, this.nodeUrl)/this.wvs
+    let deficit = (supply - reserve/this.wvs * this.state.dataNeutrino.price/100)
+
     let other = {
         address : address,
         balance : await nodeInteraction.balance(address, this.nodeUrl),
@@ -74,7 +72,7 @@ class App extends Component {
     }
     this.setState({ dataOther: other });
 
-    let response = await axios.get(this.nodeUrl + "/transactions/address/" + this.state.neutrinoAddress + "/limit/10000")
+    let response = await axios.get(this.nodeUrl + "/transactions/address/" + this.state.neutrinoAddress + "/limit/100")
     let history = response["data"][0].sort((a, b) => (a.height > b.height) ? 1 : -1)
     let chart = []
     for(var key in history){
@@ -103,15 +101,24 @@ class App extends Component {
     }
   }
 
-  setPriceHandleClick = async () => {
+  finilizePriceHandleClick = async () => {
      const setPriceTx = invokeScript({
       chainId: this.chainId,
       dApp: this.state.neutrinoAddress,
-      call: {function: "setCurrentPrice", args:[{type:"integer", value: this.state.price * 100}] },
+      call: {function: "finilizeCurrentPrice" },
       fee: 900000,
     }, this.state.seed);
     await this.sendTx(setPriceTx)
   }
+  setPriceHandleClick = async () => {
+    const setPriceTx = invokeScript({
+     chainId: this.chainId,
+     dApp: this.state.neutrinoAddress,
+     call: {function: "setCurrentPrice", args:[{type:"integer", value: this.state.price * 100}] },
+     fee: 900000,
+   }, this.state.seed);
+   await this.sendTx(setPriceTx)
+ }
   swapWavesToNeutrino = async () => {
     const tx = invokeScript({
             chainId: this.chainId,
@@ -147,6 +154,22 @@ class App extends Component {
     }, this.state.seed);
     await this.sendTx(tx)
   }
+  adminUnlock = async () => {
+    const tx = invokeScript({
+      chainId: this.chainId,
+      dApp: this.state.neutrinoAddress,
+      call: {function: "adminUnlock", args:[{type:"integer", value: this.state.adminPrice }] }
+    }, this.state.seed);
+    await this.sendTx(tx)
+  }
+  adminLock = async () => {
+    const tx = invokeScript({
+      chainId: this.chainId,
+      dApp: this.state.neutrinoAddress,
+      call: {function: "adminLock" }
+    }, this.state.seed);
+    await this.sendTx(tx)
+  }
   async cancelOrder(hash){
     const tx = invokeScript({
       chainId: this.chainId,
@@ -159,7 +182,7 @@ class App extends Component {
     const tx = invokeScript({
       chainId: this.chainId,
       dApp: this.state.dataNeutrino.auction_contract,
-      call: {function: "execute" }
+      call: {function: "executeOrder" }
     }, this.state.seed);
     this.sendTx(tx)
   }
@@ -342,7 +365,6 @@ class App extends Component {
 
     }
   }
-      
   getAllSnapshot(){
     let newMap = {}
     let array = this.state.dataNeutrino;
@@ -372,7 +394,6 @@ class App extends Component {
     }
     return snapshot;
   }
-
   nodeAddressChange = (event) => {
     let leasingConfig = this.state.leasingConfig
     leasingConfig.nodeAddress = event.target.value
@@ -383,146 +404,60 @@ class App extends Component {
     leasingConfig.percent = event.target.value
     this.setState({ leasingConfig: leasingConfig })
   }
-
-  getLeasingSetting(){
-    if(this.state.dataLease["account_nodes_" + this.state.dataOther.address] == undefined)
-      return [];
-    let settins = this.state.dataLease["account_nodes_" + this.state.dataOther.address].split("_")
-    let settingUi = []
-    for (let index = 0; index < settins.length-1; index++) {
-      let values = settins[index].split("+")
-      let item = 
-        <div>
-          NodeAddress: {values[0]} {" "}
-          Percent: {values[1]}% {" "}
-          <button type="submit" onClick={this.removeLesingSetting.bind(this, index)}>X</button>
-        </div> 
-      settingUi.push(item)
-    }
-    return settingUi
-  }
-  getSnapshotLeasingSetting(){
-    let block = this.state.dataLease["lease_prev_block_" + this.state.dataLease.lease_block]
-    let key = "snapshot_account_nodes_" + this.state.dataOther.address + "_" + block
-    if(this.state.dataLease[key] == undefined)
-      return [];
-    let settins = this.state.dataLease[key].split("_")
-    let settingUi = []
-    for (let index = 0; index < settins.length-1; index++) {
-      let values = settins[index].split("+")
-
-      let isExist = this.state.dataLease["n_executed_" + this.state.dataOther.address  + "_" + values[0] + "_" + this.state.dataLease.lease_block]
-      if(isExist)
-        continue;
-      let item = 
-        <div>
-          NodeAddress: {values[0]} {" "}
-          Percent: {values[1]}% {" "}
-          <button type="submit" onClick={this.applyLeasingSettings.bind(this, index)}>+</button>
-        </div> 
-      settingUi.push(item)
-    }
-    return settingUi
-  }
-  async removeLesingSetting(position){
-    const tx = invokeScript({
-      chainId: this.chainId,
-      dApp: this.state.dataNeutrino.lease_contract,
-      call: {function: "removeLeasingSettings", args: [{ value: position, type:"integer" }]}
-    }, this.state.seed);
-    await this.sendTx(tx)
-  }
-
-  addLeasingSetting = async () => {
-    let leasingConfig = this.state.leasingConfig
-    const tx = invokeScript({
-      chainId: this.chainId,
-      dApp: this.state.dataNeutrino.lease_contract,
-      call: {function: "addLeasingSettings", args: [{ value: leasingConfig.nodeAddress, type:"string" }, { value: leasingConfig.percent, type:"integer" }]}
-    }, this.state.seed);
-
-    leasingConfig.percent = 0
-    leasingConfig.nodeAddress = ""
-    this.setState({ leasingConfig: leasingConfig })
-    await this.sendTx(tx)
-  }
-  async applyLeasingSettings(position){
-    let leasingConfig = this.state.leasingConfig
-    const tx = invokeScript({
-      chainId: this.chainId,
-      dApp: this.state.dataNeutrino.lease_contract,
-      call: {function: "applySettings", args: [{ value: this.state.dataOther.address, type:"string" }, { value: position, type:"integer" }]}
-    }, this.state.seed);
-    await this.sendTx(tx)
-  }
-  snapshotLeasingBalance = async () => { 
-    let leasingConfig = this.state.leasingConfig
-    const tx = invokeScript({
-      chainId: this.chainId,
-      dApp: this.state.dataNeutrino.lease_contract,
-      call: {function: "snapshotBalance", args: [{ value: this.state.dataOther.address, type:"string" }]}
-    }, this.state.seed);
-    await this.sendTx(tx)
-  }
-  finilizeSnapshots = async () => { 
-    let leasingConfig = this.state.leasingConfig
-    const tx = invokeScript({
-      chainId: this.chainId,
-      dApp: this.state.dataNeutrino.lease_contract,
-      call: {function: "finilizeSnapshots"}
-    }, this.state.seed);
-    await this.sendTx(tx)
-  }
   
-  snapshotLeasingSetting = async () => { 
+  lockNeutrino = async () => {
     const tx = invokeScript({
       chainId: this.chainId,
-      dApp: this.state.dataNeutrino.lease_contract,
-      call: {function: "snapshotLeasingSettings", args: [{ value: this.state.dataOther.address , type:"string" }]}
+      dApp: this.state.dataNeutrino.rpd_contract,
+      call: {function: "lockNeutrino" },
+      payment: [{assetId: this.state.dataNeutrino.neutrino_asset_id, amount: this.state.rpdNeutrinoAmount*this.wvs }]
     }, this.state.seed);
     await this.sendTx(tx)
   }
-  sendToLeasing = async () => {
+  withdrawNeutrino = async () => {
     const tx = invokeScript({
       chainId: this.chainId,
-      dApp: this.state.neutrinoAddress,
-      call: {function: "sendToLeasing", args: [{ value: this.leaseNodeProviderAddress , type:"string"}, {value: this.state.dataLease.lease_block , type:"integer" }]}
+      dApp: this.state.dataNeutrino.rpd_contract,
+      call: {function: "withdrawRPD", args:[{type:"integer", value: this.state.rpdCount}, {type:"integer", value: this.state.rpdIndex}] }
     }, this.state.seed);
     await this.sendTx(tx)
   }
-  leaseTx = async () => {
-    const tx = lease({
+  unlockNeutrino = async () => {
+    const tx = invokeScript({
       chainId: this.chainId,
-      amount: this.state.dataLease["node_balance_"+this.leaseNodeProviderAddress+"_"+this.state.dataLease.lease_block],
-      recipient: this.leaseNodeAddress,
-      fee: 500000
-    }, this.leasingNodeSeed);
-    await this.sendTx(tx)
-  }
-  cancelLeaseTx = async () => {
-    const tx = cancelLease({
-      chainId: this.chainId,
-      leaseId: this.state.leaseId,
-      fee: 500000
-    }, this.leasingNodeSeed);
-    await this.sendTx(tx)
-  }
-  withdrawLeasing = async () => {
-     const tx = invokeScript({
-      chainId: this.chainId,
-      dApp: this.leaseNodeProviderAddress,
-      call: {function: "withdraw", args: [{ value: this.state.withdrawLeasingBlock, type:"integer" }]}
+      dApp: this.state.dataNeutrino.rpd_contract,
+      call: {function: "unlockNeutrino", args:[{type:"integer", value: this.state.rpdNeutrinoAmount*this.wvs}] }
     }, this.state.seed);
     await this.sendTx(tx)
   }
-  withdrawProfit = async () => {
-     const tx = invokeScript({
-      chainId: this.chainId,
-      dApp: this.leaseNodeProviderAddress,
-      call: {function: "withdrawProfit", args: [{ value: this.state.dataOther.address , type:"string" }, { value: this.state.withdrawLeasingBlock, type:"integer" }]}
-    }, this.state.seed);
-    await this.sendTx(tx)
+  getRPDBalance(){
+    if(this.state.dataOther != undefined)
+      return this.state.dataRPD["rpd_balance_" + this.state.dataNeutrino.neutrino_asset_id + "_" + this.state.dataOther.address]/this.wvs
   }
+  getRPDCheck(){
+    let rpdUi = []
+    for (let index = 0; index < this.state.dataNeutrino.rpd_sync_index; index++) {
+      const profit = this.state.dataNeutrino["rpd_profit_" + index];
+      const allBalance = this.state.dataNeutrino["rpd_balance_" + this.state.dataNeutrino.neutrino_asset_id + "_" + index]
+      rpdUi.push(
+        <div>
+          //------------------------------
+          <div>
+            AllProfit:{profit/this.wvs}
+          </div>
+          <div>
+            Index:{index}
+          </div>
+          <div>
+            AllBalance:{allBalance/this.wvs}
+          </div>
+          //------------------------------
+        </div>
+      )
+    }    
+    return rpdUi;
+  }
+
   render() {
     return (
       <div className="App">
@@ -546,6 +481,7 @@ class App extends Component {
                 Price: <input type="text" value={this.state.price} onChange={() => this.setState({ price: event.target.value })} />
               </label>
               <button type="submit" onClick={this.setPriceHandleClick}>Set Price</button>
+              <button type="submit" onClick={this.finilizePriceHandleClick}>Finilize Price</button>
             </div>
             <div>
               <h4>Generate Bond(to auction)</h4>
@@ -670,15 +606,34 @@ class App extends Component {
             </div>
           </div>
           <div>
-            <h3>Snapshot</h3>
+            <h3>Admin</h3>
             <div>
-              <h4>Create my snapshot</h4>
-              <button type="submit" onClick={this.createSnapshotBalance}>Create</button>
+              <h4>Lock</h4>
+              <button type="submit" onClick={this.adminLock}>lock</button>
             </div>
             <div>
-              <h4>Queue bond execute Snapshot</h4>
-              {this.getBondQueueSnapshot()}
+              <h4>Unlock</h4>
+              <label>
+                Price : <input type="text" value={this.state.adminPrice} onChange={() => this.setState({ adminPrice: event.target.value })} />
+              </label>
+              <button type="submit" onClick={this.adminUnlock}>unlock</button>
             </div>
+          </div>
+          <div>
+            <h3>RPD</h3>
+            <label>
+                Balance: {this.getRPDBalance()}
+                <br/> History count: {this.state.dataRPD["balance_history_" + this.state.dataOther.address]}
+               <br/> Amount : <input type="text" value={this.state.rpdNeutrinoAmount} onChange={() => this.setState({ rpdNeutrinoAmount: event.target.value })} />
+            </label>
+            <button type="submit" onClick={this.lockNeutrino}>lock</button>
+            <button type="submit" onClick={this.unlockNeutrino}>unlock</button>
+            <label>
+               <br/> RPDCount : <input type="text" value={this.state.rpdCount} onChange={() => this.setState({ rpdCount: event.target.value })} />
+               <br/> Index : <input type="text" value={this.state.rpdIndex} onChange={() => this.setState({ rpdIndex: event.target.value })} />
+            </label>
+            <button type="submit" onClick={this.withdrawNeutrino}>withdraw</button>
+            <br/>{this.getRPDCheck()}
           </div>
         </div>
       </div>
